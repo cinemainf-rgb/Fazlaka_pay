@@ -1,50 +1,29 @@
-name: Build APK
+name: fazlaka_pay_pro
+description: Fazlaka Pay Pro - Professional POS & Cards
+publish_to: 'none'
+version: 1.0.0+1
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+environment:
+  sdk: '>=3.0.0 <4.0.0'
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+  
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+  
+  crypto: ^3.0.3
+  permission_handler: ^11.3.0
+  flutter_bluetooth_serial_plus: ^0.5.7
+  local_auth: ^2.3.0
+  path_provider: ^2.1.1
+  csv: ^6.0.0
+  intl: ^0.19.0
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Create Fresh Android Folder
-        run: flutter create . --org com.fazlaka.paypro --project-name fazlaka_pay_pro --platforms android
-
-      - name: Add Permissions
-        run: |
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />' android/app/src/main/AndroidManifest.xml
-
-      - name: Update SDK Versions
-        run: |
-          python3 -c "
-          import re
-          with open('android/app/build.gradle.kts', 'r') as f:
-              content = f.read()
-          content = re.sub(r'compileSdk\s*=\s*flutter\.compileSdkVersion', 'compileSdk = 34', content)
-          content = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23', content)
-          with open('android/app/build.gradle.kts', 'w') as f:
-              f.write(content)
-          "
-
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Fazlaka-Pay-Pro-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+flutter:
+  uses-material-design: true
