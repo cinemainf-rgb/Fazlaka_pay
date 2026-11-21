@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../core/colors.dart';
-
-// استيراد الشاشات (اللي هنعملها فاضية دلوقتي)
 import 'tab_machines.dart';
 import 'tab_wallets.dart';
 import 'tab_sales.dart';
@@ -15,27 +13,26 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 3; // نبدأ بتبويب المكن زي الصورة
+  // التغيير هنا: بنبدأ بتبويب المكن (رقم 0)
+  int _currentIndex = 0; 
   
-  // قائمة الشاشات
   final List<Widget> _screens = [
-    const TabMachines(), // 0
-    const TabWallets(),  // 1
-    const TabSales(),    // 2
-    const TabReports(),  // 3
+    const TabMachines(), // 0 - المكن
+    const TabWallets(),  // 1 - المحافظ
+    const TabSales(),    // 2 - مبيعات
+    const TabReports(),  // 3 - التقارير
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 1. الشريط العلوي
       appBar: AppBar(
         backgroundColor: petrol,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Column(
           children: [
             Text('Fazlaka Pay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-            Text('٢٠٢٦/١١/٢٠', style: TextStyle(fontSize: 12, color: Colors.white70)), // التاريخ (هيتحدث بعدين)
+            Text('٢٠٢٦/١١/٢٠', style: TextStyle(fontSize: 12, color: Colors.white70)), 
           ],
         ),
         centerTitle: true,
@@ -43,8 +40,6 @@ class _MainNavigationState extends State<MainNavigation> {
           IconButton(icon: const Icon(Icons.notifications), onPressed: () {}),
         ],
       ),
-
-      // 2. القائمة الجانبية (Drawer)
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -61,10 +56,10 @@ class _MainNavigationState extends State<MainNavigation> {
                 ],
               ),
             ),
-            _drawerItem(Icons.atm, 'المكن', () {}),
-            _drawerItem(Icons.shopping_cart, 'المبيعات', () {}),
-            _drawerItem(Icons.credit_card, 'المحافظ والخزنة', () {}),
-            _drawerItem(Icons.bar_chart, 'التقارير', () {}),
+            _drawerItem(Icons.atm, 'المكن', () { setState(() { _currentIndex = 0; }); Navigator.pop(context); }),
+            _drawerItem(Icons.shopping_cart, 'المبيعات', () { setState(() { _currentIndex = 2; }); Navigator.pop(context); }),
+            _drawerItem(Icons.credit_card, 'المحافظ والخزنة', () { setState(() { _currentIndex = 1; }); Navigator.pop(context); }),
+            _drawerItem(Icons.bar_chart, 'التقارير', () { setState(() { _currentIndex = 3; }); Navigator.pop(context); }),
             const Divider(),
             _drawerItem(Icons.settings, 'الإعدادات', () {}),
             _drawerItem(Icons.share, 'مشاركة واتساب', () {}),
@@ -80,11 +75,7 @@ class _MainNavigationState extends State<MainNavigation> {
           ],
         ),
       ),
-
-      // 3. محتوى الشاشة
       body: _screens[_currentIndex],
-
-      // 4. التبويبات السفلية
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         backgroundColor: Colors.white,
@@ -100,8 +91,6 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'التقارير'),
         ],
       ),
-      
-      // 5. الزر العائم
       floatingActionButton: FloatingActionButton(
         backgroundColor: accentColor,
         onPressed: () {},
