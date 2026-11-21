@@ -11,8 +11,10 @@ class TabMachines extends StatefulWidget {
 }
 
 class _TabMachinesState extends State<TabMachines> {
+  // تصحيح النوع هنا ليكون Map<String, dynamic>
   List<Map<String, dynamic>> wallets = [];
   List<Map<String, dynamic>> sales = [];
+  List<Map<String, dynamic>> charges = [];
   String selectedMachine = 'فوري رئيسي';
   double cashInDrawer = 0.0;
 
@@ -22,20 +24,59 @@ class _TabMachinesState extends State<TabMachines> {
   final buyCtrl = TextEditingController();
   final sellCtrl = TextEditingController();
 
+  static const List<String> machineNames = [
+    'فوري رئيسي',
+    'فوري كروت',
+    'فوري كاش أوت',
+    'بساطة',
+    'موبايل',
+    'كاش مصر',
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadData();
   }
 
+  @override
+  void dispose() {
+    nameCtrl.dispose();
+    qtyCtrl.dispose();
+    buyCtrl.dispose();
+    sellCtrl.dispose();
+    super.dispose();
+  }
+
+  double _toDouble(dynamic value, {double fallback = 0.0}) {
+    if (value is num && value.isFinite) return value.toDouble();
+    if (value is String) {
+      final parsed = double.tryParse(value.trim());
+      if (parsed != null && parsed.isFinite) return parsed;
+    }
+    return fallback;
+  }
+
+  String _formatAmount(double value) {
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+  }
+
   Future<void> _loadData() async {
     final sp = await SharedPreferences.getInstance();
-    
+
     // تحميل المحافظ
     final wRaw = sp.getString('pay_wallets');
     if (wRaw != null) {
-      wallets = List<Map<String, dynamic>>.from(jsonDecode(wRaw));
-    } else {
+      try {
+        wallets = List<Map<String, dynamic>>.from(jsonDecode(wRaw));
+      } catch (_) {
+        wallets = [];
+      }
+    }
+
+    if (wallets.isEmpty) {
       wallets = [
         {'name': 'الخزنة الرئيسية', 'bal': 0.0, 'limit': 0.0},
         {'name': 'نقدية (كاش الدرج)', 'bal': 0.0, 'limit': 0.0},
@@ -53,15 +94,32 @@ class _TabMachinesState extends State<TabMachines> {
     // تحميل المبيعات
     final sRaw = sp.getString('pay_sales2');
     if (sRaw != null) {
-      sales = List<Map<String, dynamic>>.from(jsonDecode(sRaw));
-    }
-    
-    // حساب النقدية
-    final cashIndex = wallets.indexWhere((w) => w['name'] == 'نقدية (كاش الدرج)');
-    if (cashIndex != -1) {
-      cashInDrawer = (wallets[cashIndex]['bal'] as num).toDouble();
+      try {
+        sales = List<Map<String, dynamic>>.from(jsonDecode(sRaw));
+      } catch (_) {
+        sales = [];
+      }
     }
 
+    // تحميل سجل الشحن
+    final cRaw = sp.getString('pay_charges');
+    if (cRaw != null) {
+      try {
+        charges = List<Map<String, dynamic>>.from(jsonDecode(cRaw));
+      } catch (_) {
+        charges = [];
+      }
+    }
+
+    final cashIndex = wallets.indexWhere((w) => w['name'] == 'نقدية (كاش الدرج)');
+    cashInDrawer = cashIndex != -1 ? _toDouble(wallets[cashIndex]['bal']) : 0.0;
+
+    final machinesList = _filteredMachines;
+    if (machinesList.isNotEmpty && !machinesList.any((m) => m['name'] == selectedMachine)) {
+      selectedMachine = machinesList.first['name'].toString();
+    }
+
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -69,118 +127,153 @@ class _TabMachinesState extends State<TabMachines> {
     final sp = await SharedPreferences.getInstance();
     await sp.setString('pay_wallets', jsonEncode(wallets));
     await sp.setString('pay_sales2', jsonEncode(sales));
+    await sp.setString('pay_charges', jsonEncode(charges));
   }
 
-  // حساب مبيعات اليوم
+  List<Map<String, dynamic>> get _filteredMachines {
+    return wallets.where((w) => machineNames.contains(w['name'].toString())).toList();
+  }
+
   double get todaySales {
-    final today = DateTime.now().toString().substring(0, 10);
-    double t = 0;
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    double total = 0;
     for (final s in sales) {
       if ((s['date'] ?? '').toString().startsWith(today)) {
-        t += (s['total'] as num).toDouble();
+        total += _toDouble(s['total']);
       }
     }
-    return t;
+    return total;
   }
 
-  // حساب أرباح اليوم
   double get todayProfit {
-    final today = DateTime.now().toString().substring(0, 10);
-    double t = 0;
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    double total = 0;
     for (final s in sales) {
       if ((s['date'] ?? '').toString().startsWith(today)) {
-        t += (s['profit'] as num).toDouble();
+        total += _toDouble(s['profit']);
       }
     }
-    return t;
+    return total;
   }
 
-  // دالة الشحن
   Future<void> _charge() async {
-    final c = TextEditingController();
+    final ctrl = TextEditingController();
     final amt = await showDialog<double>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('شحن - $selectedMachine'),
+      builder: (dialogCtx) => AlertDialog(
+        title: Text('شحن - $selectedMachine', textAlign: TextAlign.right),
         content: TextField(
-          controller: c,
-          keyboardType: TextInputType.number,
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(labelText: 'المبلغ'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('الغاء')),
-          TextButton(onPressed: () => Navigator.pop(context, double.tryParse(c.text) ?? 0), child: const Text('شحن')),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, _toDouble(ctrl.text)), child: const Text('شحن')),
         ],
       ),
     );
-    if (amt != null && amt > 0) {
-      setState(() {
-        final i = wallets.indexWhere((e) => e['name'] == selectedMachine);
-        if (i >= 0) {
-          wallets[i]['bal'] = (wallets[i]['bal'] as num).toDouble() + amt;
-        }
-        sales.insert(0, {
-          'name': 'شحن $selectedMachine',
-          'total': amt,
-          'profit': 0,
-          'date': DateTime.now().toString(),
-        });
-      });
-      await _saveData();
-      _loadData(); // تحديث الأرقام في الشاشة
-    }
-  }
+    ctrl.dispose();
 
-  // دالة إضافة منتج
-  Future<void> _addProduct() async {
-    final name = nameCtrl.text.trim();
-    final qty = double.tryParse(qtyCtrl.text) ?? 0;
-    final buy = double.tryParse(buyCtrl.text) ?? 0;
-    final sell = double.tryParse(sellCtrl.text) ?? 0;
-    
-    if (name.isEmpty || qty <= 0 || sell <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى ملء البيانات بشكل صحيح')));
+    if (amt == null || amt <= 0) return;
+
+    final machineIdx = wallets.indexWhere((e) => e['name'] == selectedMachine);
+    final cashIdx = wallets.indexWhere((e) => e['name'] == 'نقدية (كاش الدرج)');
+    final currentCash = cashIdx != -1 ? _toDouble(wallets[cashIdx]['bal']) : 0.0;
+
+    // التحقق من كفاية الرصيد في الدرج
+    if (cashIdx != -1 && currentCash < amt) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رصيد النقدية في الدرج غير كافٍ لإتمام الشحن')),
+      );
       return;
     }
 
-    setState(() {
-      sales.insert(0, {
-        'name': name,
-        'total': qty * sell,
-        'profit': qty * (sell - buy),
-        'date': DateTime.now().toString(),
-      });
-      
-      // إضافة المبلغ لخزنة النقدية
-      final cashIndex = wallets.indexWhere((e) => e['name'] == 'نقدية (كاش الدرج)');
-      if (cashIndex != -1) {
-        wallets[cashIndex]['bal'] = (wallets[cashIndex]['bal'] as num).toDouble() + (qty * sell);
-      }
+    if (machineIdx != -1) {
+      wallets[machineIdx]['bal'] = _toDouble(wallets[machineIdx]['bal']) + amt;
+    }
+    if (cashIdx != -1) {
+      wallets[cashIdx]['bal'] = currentCash - amt;
+      cashInDrawer = _toDouble(wallets[cashIdx]['bal']);
+    }
 
-      // تفريغ الحقول
-      nameCtrl.clear();
-      qtyCtrl.clear();
-      buyCtrl.clear();
-      sellCtrl.clear();
+    charges.insert(0, {
+      'machine': selectedMachine,
+      'amount': amt,
+      'date': DateTime.now().toIso8601String(),
     });
-    
+
     await _saveData();
-    _loadData();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إضافة المنتج بنجاح')));
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم شحن $selectedMachine بمبلغ ${_formatAmount(amt)}')),
+    );
+  }
+
+  Future<void> _addProduct() async {
+    final name = nameCtrl.text.trim();
+    final qty = _toDouble(qtyCtrl.text);
+    final buy = _toDouble(buyCtrl.text);
+    final sell = _toDouble(sellCtrl.text);
+
+    if (name.isEmpty || qty <= 0 || sell <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال اسم المنتج والكمية وسعر البيع بشكل صحيح')),
+      );
+      return;
+    }
+
+    if (buyCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تنبيه: تم احتساب سعر الشراء 0 لأن الحقل فارغ')),
+      );
+    }
+
+    final total = qty * sell;
+    final profit = qty * (sell - buy);
+
+    sales.insert(0, {
+      'name': name,
+      'total': total,
+      'profit': profit,
+      'date': DateTime.now().toIso8601String(),
+    });
+
+    final cashIndex = wallets.indexWhere((e) => e['name'] == 'نقدية (كاش الدرج)');
+    if (cashIndex != -1) {
+      wallets[cashIndex]['bal'] = _toDouble(wallets[cashIndex]['bal']) + total;
+      cashInDrawer = _toDouble(wallets[cashIndex]['bal']);
+    }
+
+    nameCtrl.clear();
+    qtyCtrl.clear();
+    buyCtrl.clear();
+    sellCtrl.clear();
+
+    await _saveData();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم تسجيل العملية بنجاح')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final machines = _filteredMachines;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       child: Column(
         children: [
           Row(
             children: [
-              Expanded(child: _statCard('ربح اليوم', '$todayProfit', Colors.amber)),
+              Expanded(child: _statCard('ربح اليوم', _formatAmount(todayProfit), Colors.amber)),
               const SizedBox(width: 10),
-              Expanded(child: _statCard('المبيعات', '$todaySales', Colors.green)),
+              Expanded(child: _statCard('المبيعات', _formatAmount(todaySales), Colors.green)),
             ],
           ),
           const SizedBox(height: 10),
@@ -188,15 +281,14 @@ class _TabMachinesState extends State<TabMachines> {
             children: [
               Expanded(child: _statCard('الديون', '0', Colors.red)),
               const SizedBox(width: 10),
-              Expanded(child: _statCard('النقدية (الدرج)', '$cashInDrawer', Colors.blue)),
+              Expanded(child: _statCard('النقدية (الدرج)', _formatAmount(cashInDrawer), Colors.blue)),
             ],
           ),
           const SizedBox(height: 10),
           _statCard('عدد العمليات', '${sales.length}', petrol, fullWidth: true),
-          
+
           const SizedBox(height: 20),
-          
-          // قسم المكن
+
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
@@ -214,10 +306,12 @@ class _TabMachinesState extends State<TabMachines> {
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: wallets.where((w) => w['name'].toString().contains('فوري') || w['name'].toString().contains('بساطة') || w['name'].toString().contains('موبايل') || w['name'].toString().contains('كاش مصر')).map((w) {
-                    final isSelected = selectedMachine == w['name'];
+                  children: machines.map((w) {
+                    final name = w['name'].toString();
+                    final bal = _toDouble(w['bal']);
+                    final isSelected = selectedMachine == name;
                     return GestureDetector(
-                      onTap: () => setState(() => selectedMachine = w['name']),
+                      onTap: () => setState(() => selectedMachine = name),
                       child: Container(
                         width: 100,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -228,9 +322,9 @@ class _TabMachinesState extends State<TabMachines> {
                         ),
                         child: Column(
                           children: [
-                            Text(w['name'], style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? Colors.white : petrol), textAlign: TextAlign.center),
+                            Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? Colors.white : petrol), textAlign: TextAlign.center),
                             const SizedBox(height: 4),
-                            Text('${w['bal']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.black)),
+                            Text(_formatAmount(bal), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.black)),
                           ],
                         ),
                       ),
@@ -252,10 +346,9 @@ class _TabMachinesState extends State<TabMachines> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 20),
-          
-          // قسم المبيعات
+
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
@@ -268,13 +361,13 @@ class _TabMachinesState extends State<TabMachines> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, decoration: _inputDecoration('الكمية'))),
+                    Expanded(child: TextField(controller: qtyCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _inputDecoration('الكمية'))),
                     const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: buyCtrl, keyboardType: TextInputType.number, decoration: _inputDecoration('سعر الشراء'))),
+                    Expanded(child: TextField(controller: buyCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _inputDecoration('سعر الشراء'))),
                   ],
                 ),
                 const SizedBox(height: 10),
-                TextField(controller: sellCtrl, keyboardType: TextInputType.number, decoration: _inputDecoration('سعر البيع')),
+                TextField(controller: sellCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _inputDecoration('سعر البيع')),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity, height: 50,
