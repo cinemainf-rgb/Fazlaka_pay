@@ -16,6 +16,12 @@ class _TabMachinesState extends State<TabMachines> {
   String selectedMachine = 'فوري رئيسي';
   double cashInDrawer = 0.0;
 
+  // حقول إضافة منتج
+  final nameCtrl = TextEditingController();
+  final qtyCtrl = TextEditingController();
+  final buyCtrl = TextEditingController();
+  final sellCtrl = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -24,6 +30,8 @@ class _TabMachinesState extends State<TabMachines> {
 
   Future<void> _loadData() async {
     final sp = await SharedPreferences.getInstance();
+    
+    // تحميل المحافظ
     final wRaw = sp.getString('pay_wallets');
     if (wRaw != null) {
       wallets = List<Map<String, dynamic>>.from(jsonDecode(wRaw));
@@ -41,12 +49,14 @@ class _TabMachinesState extends State<TabMachines> {
         {'name': 'كاش مصر', 'bal': 0.0, 'limit': 0.0},
       ];
     }
+
+    // تحميل المبيعات
     final sRaw = sp.getString('pay_sales2');
     if (sRaw != null) {
       sales = List<Map<String, dynamic>>.from(jsonDecode(sRaw));
     }
     
-    // حساب النقدية في الدرج
+    // حساب النقدية
     final cashIndex = wallets.indexWhere((w) => w['name'] == 'نقدية (كاش الدرج)');
     if (cashIndex != -1) {
       cashInDrawer = (wallets[cashIndex]['bal'] as num).toDouble();
@@ -61,6 +71,7 @@ class _TabMachinesState extends State<TabMachines> {
     await sp.setString('pay_sales2', jsonEncode(sales));
   }
 
+  // حساب مبيعات اليوم
   double get todaySales {
     final today = DateTime.now().toString().substring(0, 10);
     double t = 0;
@@ -72,6 +83,7 @@ class _TabMachinesState extends State<TabMachines> {
     return t;
   }
 
+  // حساب أرباح اليوم
   double get todayProfit {
     final today = DateTime.now().toString().substring(0, 10);
     double t = 0;
@@ -115,8 +127,47 @@ class _TabMachinesState extends State<TabMachines> {
         });
       });
       await _saveData();
-      _loadData();
+      _loadData(); // تحديث الأرقام في الشاشة
     }
+  }
+
+  // دالة إضافة منتج
+  Future<void> _addProduct() async {
+    final name = nameCtrl.text.trim();
+    final qty = double.tryParse(qtyCtrl.text) ?? 0;
+    final buy = double.tryParse(buyCtrl.text) ?? 0;
+    final sell = double.tryParse(sellCtrl.text) ?? 0;
+    
+    if (name.isEmpty || qty <= 0 || sell <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى ملء البيانات بشكل صحيح')));
+      return;
+    }
+
+    setState(() {
+      sales.insert(0, {
+        'name': name,
+        'total': qty * sell,
+        'profit': qty * (sell - buy),
+        'date': DateTime.now().toString(),
+      });
+      
+      // إضافة المبلغ لخزنة النقدية
+      final cashIndex = wallets.indexWhere((e) => e['name'] == 'نقدية (كاش الدرج)');
+      if (cashIndex != -1) {
+        wallets[cashIndex]['bal'] = (wallets[cashIndex]['bal'] as num).toDouble() + (qty * sell);
+      }
+
+      // تفريغ الحقول
+      nameCtrl.clear();
+      qtyCtrl.clear();
+      buyCtrl.clear();
+      sellCtrl.clear();
+    });
+    
+    await _saveData();
+    _loadData();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إضافة المنتج بنجاح')));
   }
 
   @override
@@ -125,7 +176,6 @@ class _TabMachinesState extends State<TabMachines> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 1. كروت الإحصائيات
           Row(
             children: [
               Expanded(child: _statCard('ربح اليوم', '$todayProfit', Colors.amber)),
@@ -146,7 +196,7 @@ class _TabMachinesState extends State<TabMachines> {
           
           const SizedBox(height: 20),
           
-          // 2. شبكة المكن
+          // قسم المكن
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
@@ -205,7 +255,7 @@ class _TabMachinesState extends State<TabMachines> {
           
           const SizedBox(height: 20),
           
-          // 3. إضافة منتج (مبيعات)
+          // قسم المبيعات
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
@@ -214,25 +264,23 @@ class _TabMachinesState extends State<TabMachines> {
               children: [
                 const Text('المبيعات - إضافة منتج', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: petrol)),
                 const SizedBox(height: 10),
-                TextField(decoration: _inputDecoration('اسم المنتج / الموديل')),
+                TextField(controller: nameCtrl, decoration: _inputDecoration('اسم المنتج / الموديل')),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(child: TextField(keyboardType: TextInputType.number, decoration: _inputDecoration('الكمية'))),
+                    Expanded(child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, decoration: _inputDecoration('الكمية'))),
                     const SizedBox(width: 8),
-                    Expanded(child: TextField(keyboardType: TextInputType.number, decoration: _inputDecoration('سعر الشراء'))),
+                    Expanded(child: TextField(controller: buyCtrl, keyboardType: TextInputType.number, decoration: _inputDecoration('سعر الشراء'))),
                   ],
                 ),
                 const SizedBox(height: 10),
-                TextField(keyboardType: TextInputType.number, decoration: _inputDecoration('سعر البيع')),
+                TextField(controller: sellCtrl, keyboardType: TextInputType.number, decoration: _inputDecoration('سعر البيع')),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity, height: 50,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: petrol),
-                    onPressed: () {
-                      // هنا منطق إضافة المنتج لاحقاً
-                    },
+                    onPressed: _addProduct,
                     child: const Text('إضافة منتج', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                 ),
@@ -244,7 +292,6 @@ class _TabMachinesState extends State<TabMachines> {
     );
   }
 
-  // كارت الإحصائيات
   Widget _statCard(String title, String value, Color color, {bool fullWidth = false}) {
     return Container(
       width: fullWidth ? double.infinity : null,
